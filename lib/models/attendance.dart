@@ -1,6 +1,6 @@
 import 'employee.dart';
 
-enum AttendanceStatus { present, absent, late, halfDay, weekend, holiday }
+enum AttendanceStatus { present, absent, late, halfDay, weekend, holiday, tour }
 
 enum CheckInMethod { biometric, gps, manual, qrCode, web }
 
@@ -163,6 +163,8 @@ class AttendanceRecord {
         return AttendanceStatus.weekend;
       case 'holiday':
         return AttendanceStatus.holiday;
+      case 'tour':
+        return AttendanceStatus.tour;
       default:
         return AttendanceStatus.absent;
     }
@@ -221,6 +223,8 @@ class AttendanceRecord {
         return 'Weekend';
       case AttendanceStatus.holiday:
         return 'Holiday';
+      case AttendanceStatus.tour:
+        return 'Tour';
     }
   }
 
@@ -239,6 +243,8 @@ class AttendanceRecord {
         return 'W';
       case AttendanceStatus.holiday:
         return 'H';
+      case AttendanceStatus.tour:
+        return 'T';
     }
   }
 
@@ -262,6 +268,7 @@ class MonthlyAttendance {
   final int halfDays;
   final int weekends;
   final int holidays;
+  final int tourDays;
   final Duration totalOvertime;
   final double attendancePercentage;
   final List<AttendanceRecord> records;
@@ -276,6 +283,7 @@ class MonthlyAttendance {
     required this.halfDays,
     required this.weekends,
     required this.holidays,
+    required this.tourDays,
     required this.totalOvertime,
     required this.attendancePercentage,
     required this.records,
@@ -296,6 +304,7 @@ class MonthlyAttendance {
       halfDays: _safeIntOr(json['half_days'], 0),
       weekends: _safeIntOr(json['weekend_days'], 0),
       holidays: _safeIntOr(json['holiday_days'], 0),
+      tourDays: _safeIntOr(json['tour_days'], 0),
       totalOvertime: Duration.zero,
       attendancePercentage:
           _safeDoubleOr(json['attendance_percentage'], 0.0),

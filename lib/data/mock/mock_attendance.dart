@@ -155,6 +155,7 @@ class MockAttendanceData {
       halfDays: halfDay,
       weekends: weekends,
       holidays: holidays,
+      tourDays: 0,
       totalOvertime: const Duration(hours: 4, minutes: 30),
       attendancePercentage: percentage,
       records: records,

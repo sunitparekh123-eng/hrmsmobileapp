@@ -865,6 +865,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           bgColor = AppColors.purpleBg;
                           textColor = AppColors.purple;
                           break;
+                        case AttendanceStatus.tour:
+                          bgColor = const Color(0xFFEDE9FE);
+                          textColor = const Color(0xFF7C3AED);
+                          break;
                       }
                     } else if (isWeekend) {
                       bgColor = AppColors.surfaceSecondary;
@@ -903,6 +907,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _legendItem(AppColors.info, 'HD', 'Half-Day'),
                   _legendItem(AppColors.purple, 'H', 'Holiday'),
                   _legendItem(AppColors.textTertiary, 'W', 'Weekend'),
+                  _legendItem(const Color(0xFF7C3AED), 'T', 'Tour'),
                 ],
               ),
             ],

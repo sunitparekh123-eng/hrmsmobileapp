@@ -207,6 +207,7 @@ class DashboardProvider extends ChangeNotifier {
       halfDays: 0,
       weekends: 0,
       holidays: 0,
+      tourDays: 0,
       totalOvertime: Duration.zero,
       attendancePercentage: 0,
       records: const [],
@@ -403,6 +404,7 @@ class DashboardProvider extends ChangeNotifier {
         int absentDays = 0;
         int lateDays = 0;
         int halfDays = 0;
+        int tourDays = 0;
         for (final r in records) {
           switch (r.status) {
             case AttendanceStatus.present:
@@ -417,6 +419,9 @@ class DashboardProvider extends ChangeNotifier {
               break;
             case AttendanceStatus.halfDay:
               halfDays++;
+              break;
+            case AttendanceStatus.tour:
+              tourDays++;
               break;
             default:
               break;
@@ -437,6 +442,7 @@ class DashboardProvider extends ChangeNotifier {
           halfDays: halfDays,
           weekends: 0,
           holidays: 0,
+          tourDays: tourDays,
           totalOvertime: Duration.zero,
           attendancePercentage: pct,
           records: records,
@@ -458,6 +464,7 @@ class DashboardProvider extends ChangeNotifier {
       halfDays: _safeInt(m['half_days']),
       weekends: _safeInt(m['weekend_days']),
       holidays: _safeInt(m['holiday_days']),
+      tourDays: _safeInt(m['tour_days']),
       totalOvertime: Duration.zero,
       attendancePercentage: _safeDouble(m['attendance_percentage']),
       records: records,

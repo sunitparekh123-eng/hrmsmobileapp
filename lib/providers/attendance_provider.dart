@@ -40,6 +40,11 @@ class AttendanceProvider extends ChangeNotifier {
 
   // -- Geo-location (DYNAMIC — populated from backend + real device GPS) --
   OfficeLocation? _selectedOffice;
+  // All active offices for the employee's company. The geo-fence check
+  // runs against EVERY office so employees can punch in/out from any
+  // company location (e.g. punch in at Indore office 1, punch out at
+  // office 2). `_selectedOffice` is set to the nearest matching office.
+  List<OfficeLocation> _companyOffices = [];
   GeoFenceStatus _geoFenceStatus = GeoFenceStatus.unknown;
   double _currentDistance = 0.0;
   double? _currentLat;
@@ -84,6 +89,8 @@ class AttendanceProvider extends ChangeNotifier {
   String? get photoPathOut => _photoPathOut;
   List<PunchRecord> get todayPunches => List.unmodifiable(_todayPunches);
   OfficeLocation? get selectedOffice => _selectedOffice;
+  /// All active company offices the employee can punch from.
+  List<OfficeLocation> get companyOffices => List.unmodifiable(_companyOffices);
   GeoFenceStatus get geoFenceStatus => _geoFenceStatus;
   double get currentDistance => _currentDistance;
   double? get currentLat => _currentLat;
@@ -177,6 +184,36 @@ class AttendanceProvider extends ChangeNotifier {
       final data = await _api.getAuth('/auth/me');
       if (data == null) return;
 
+      // Parse ALL active company offices so the geo-fence check can run
+      // against every office location (multi-location punch support).
+      final officesRaw = data['company_offices'] as List?;
+      final List<OfficeLocation> parsed = [];
+      if (officesRaw != null) {
+        for (final item in officesRaw) {
+          final o = item as Map<String, dynamic>;
+          final lat = _safeDouble(o['latitude']);
+          final lon = _safeDouble(o['longitude']);
+          final radius = _safeDouble(o['radius_meters']) ?? 200.0;
+          if (lat != null && lon != null) {
+            parsed.add(OfficeLocation(
+              id: o['id']?.toString() ?? 'OFFICE',
+              name: o['name'] as String? ?? 'Office',
+              address: (o['address'] as String?) ??
+                  (o['city'] as String?) ??
+                  (o['name'] as String?) ??
+                  '',
+              latitude: lat,
+              longitude: lon,
+              radiusMeters: radius,
+            ));
+          }
+        }
+      }
+      _companyOffices = parsed;
+
+      // Keep the employee's primary office as the initial `_selectedOffice`
+      // (used for map display before GPS is acquired). It will be updated to
+      // the nearest matching office once GPS coordinates are available.
       final officeRaw = data['office'] as Map<String, dynamic>?;
       if (officeRaw != null) {
         final lat = _safeDouble(officeRaw['latitude']);
@@ -193,6 +230,10 @@ class AttendanceProvider extends ChangeNotifier {
             radiusMeters: radius,
           );
         }
+      } else if (_companyOffices.isNotEmpty) {
+        // Fallback: if the employee has no primary office assigned, use the
+        // first company office for initial display.
+        _selectedOffice = _companyOffices.first;
       }
     } catch (e) {
       debugPrint('_fetchOfficeFromBackend error: $e');
@@ -261,21 +302,64 @@ class AttendanceProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-run the geo-fence check with current position against the office.
+  /// Re-run the geo-fence check with current position against ALL company
+  /// offices. This enables multi-location punch in/out — the employee is
+  /// considered "within range" if they are inside ANY company office's
+  /// geo-fence radius, not just their primary office.
+  ///
+  /// `_selectedOffice` is updated to the nearest matching office (or the
+  /// nearest office overall when out of range) so the map and banner
+  /// display the most relevant location.
   void _recalculateGeoFence() {
-    if (_currentLat == null || _currentLon == null || _selectedOffice == null) {
+    if (_currentLat == null || _currentLon == null) {
       _geoFenceStatus = GeoFenceStatus.unknown;
       _currentDistance = 0.0;
       return;
     }
 
-    _currentDistance = GeoUtils.calculateDistance(
-      _currentLat!,
-      _currentLon!,
-      _selectedOffice!.latitude,
-      _selectedOffice!.longitude,
-    );
-    _geoFenceStatus = _currentDistance <= _selectedOffice!.radiusMeters
+    // No offices available — cannot determine geo-fence status.
+    if (_companyOffices.isEmpty && _selectedOffice == null) {
+      _geoFenceStatus = GeoFenceStatus.unknown;
+      _currentDistance = 0.0;
+      return;
+    }
+
+    // Build the list of offices to check. Prefer the full company offices
+    // list; fall back to the single selected office if the list is empty.
+    final offices = _companyOffices.isNotEmpty
+        ? _companyOffices
+        : (_selectedOffice != null ? [_selectedOffice!] : <OfficeLocation>[]);
+
+    OfficeLocation? nearestOffice;
+    double nearestDistance = double.infinity;
+
+    for (final office in offices) {
+      final dist = GeoUtils.calculateDistance(
+        _currentLat!,
+        _currentLon!,
+        office.latitude,
+        office.longitude,
+      );
+      if (dist < nearestDistance) {
+        nearestDistance = dist;
+        nearestOffice = office;
+      }
+    }
+
+    if (nearestOffice == null) {
+      _geoFenceStatus = GeoFenceStatus.unknown;
+      _currentDistance = 0.0;
+      return;
+    }
+
+    // Update the selected office to the nearest one so the map/banner
+    // reflect the office the employee is closest to.
+    _selectedOffice = nearestOffice;
+    _currentDistance = nearestDistance;
+
+    // Within range if the distance to the nearest office is within its
+    // own geo-fence radius.
+    _geoFenceStatus = _currentDistance <= nearestOffice.radiusMeters
         ? GeoFenceStatus.withinRange
         : GeoFenceStatus.outOfRange;
   }
@@ -400,6 +484,7 @@ class AttendanceProvider extends ChangeNotifier {
         );
       } else if (records.isNotEmpty) {
         // Aggregate from daily records
+        int tourDays = 0;
         for (final r in records) {
           switch (r.status) {
             case AttendanceStatus.present:
@@ -421,6 +506,9 @@ class AttendanceProvider extends ChangeNotifier {
             case AttendanceStatus.holiday:
               holidays++;
               break;
+            case AttendanceStatus.tour:
+              tourDays++;
+              break;
           }
         }
         totalWorkingDays = presentDays + absentDays + lateDays + halfDays;
@@ -435,13 +523,14 @@ class AttendanceProvider extends ChangeNotifier {
         _currentMonth = MonthlyAttendance(
           month: DateTime.now().month,
           year: DateTime.now().year,
-          totalDays: totalWorkingDays + weekends + holidays,
+          totalDays: totalWorkingDays + weekends + holidays + tourDays,
           presentDays: presentDays,
           absentDays: absentDays,
           lateDays: lateDays,
           halfDays: halfDays,
           weekends: weekends,
           holidays: holidays,
+          tourDays: tourDays,
           totalOvertime: Duration.zero,
           attendancePercentage: attendancePct,
           records: records,
@@ -769,6 +858,7 @@ class AttendanceProvider extends ChangeNotifier {
     _photoPathOut = null;
     _todayPunches.clear();
     _selectedOffice = null;
+    _companyOffices = [];
     _geoFenceStatus = GeoFenceStatus.unknown;
     _currentDistance = 0.0;
     _currentLat = null;

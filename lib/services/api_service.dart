@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +16,10 @@ class ApiService {
 
   String? _token;
   String? _refreshToken;
-  bool _isRefreshing = false;
+
+  /// Holds the in-flight refresh operation so concurrent 401s all
+  /// await the SAME refresh instead of racing / failing immediately.
+  Future<bool>? _refreshFuture;
 
   // ── Token Management ────────────────────────────────────────────
 
@@ -58,12 +62,31 @@ class ApiService {
   ///
   /// This is called automatically when an authenticated request
   /// receives a 401 response, so the user stays logged in for the
-  /// full 7-day lifetime of the refresh token without needing to
+  /// full 60-day lifetime of the refresh token without needing to
   /// re-enter credentials.
+  ///
+  /// If a refresh is already in flight (e.g. several API calls hit
+  /// 401 at the same time), concurrent callers await the SAME
+  /// refresh Future instead of failing immediately. This prevents
+  /// spurious logouts when multiple requests expire together.
   Future<bool> _refreshAccessToken() async {
-    if (_refreshToken == null || _isRefreshing) return false;
+    if (_refreshToken == null) return false;
 
-    _isRefreshing = true;
+    // If a refresh is already running, wait for it instead of racing.
+    if (_refreshFuture != null) {
+      return _refreshFuture!;
+    }
+
+    _refreshFuture = _doRefresh();
+    try {
+      return await _refreshFuture!;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  /// Performs the actual HTTP refresh-token call.
+  Future<bool> _doRefresh() async {
     try {
       final url = Uri.parse('$baseUrl/auth/refresh-token');
       final response = await http.post(
@@ -90,8 +113,6 @@ class ApiService {
       return false;
     } catch (_) {
       return false;
-    } finally {
-      _isRefreshing = false;
     }
   }
 
@@ -154,7 +175,7 @@ class ApiService {
   ///
   /// If the access token has expired (HTTP 401), the service
   /// automatically attempts a single token-refresh and retries the
-  /// request so the user stays logged in for the full 7-day lifetime
+  /// request so the user stays logged in for the full 60-day lifetime
   /// of the refresh token.
   Future<dynamic> getAuth(String path) async {
     final url = Uri.parse('$baseUrl$path');

@@ -128,7 +128,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   // ═══════════════════════════════════════════════════════════════
   Widget _buildDisabledDayBanner(AttendanceProvider provider) {
     final reason = provider.disabledReason ?? 'Attendance is not required today';
-    final isHoliday = reason.toLowerCase().contains('holiday');
+    final reasonLower = reason.toLowerCase();
+    final isTour = reasonLower.contains('tour');
+    final isHoliday = !isTour && reasonLower.contains('holiday');
 
     return Container(
       width: double.infinity,
@@ -137,15 +139,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: isHoliday
-              ? [const Color(0xFFFEF3C7), const Color(0xFFFDE68A).withValues(alpha: 0.4)]
-              : [const Color(0xFFDBEAFE), const Color(0xFFBFDBFE).withValues(alpha: 0.4)],
+          colors: isTour
+              ? [const Color(0xFFEDE9FE), const Color(0xFFDDD6FE).withValues(alpha: 0.4)]
+              : isHoliday
+                  ? [const Color(0xFFFEF3C7), const Color(0xFFFDE68A).withValues(alpha: 0.4)]
+                  : [const Color(0xFFDBEAFE), const Color(0xFFBFDBFE).withValues(alpha: 0.4)],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isHoliday
-              ? const Color(0xFFF59E0B).withValues(alpha: 0.3)
-              : const Color(0xFF3B82F6).withValues(alpha: 0.3),
+          color: isTour
+              ? const Color(0xFF8B5CF6).withValues(alpha: 0.3)
+              : isHoliday
+                  ? const Color(0xFFF59E0B).withValues(alpha: 0.3)
+                  : const Color(0xFF3B82F6).withValues(alpha: 0.3),
         ),
       ),
       child: Row(
@@ -154,14 +160,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: isHoliday
-                  ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
-                  : const Color(0xFF3B82F6).withValues(alpha: 0.15),
+              color: isTour
+                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.15)
+                  : isHoliday
+                      ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                      : const Color(0xFF3B82F6).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
-              isHoliday ? Icons.celebration_rounded : Icons.weekend_rounded,
-              color: isHoliday ? const Color(0xFFF59E0B) : const Color(0xFF3B82F6),
+              isTour
+                  ? Icons.flight_takeoff_rounded
+                  : isHoliday
+                      ? Icons.celebration_rounded
+                      : Icons.weekend_rounded,
+              color: isTour
+                  ? const Color(0xFF8B5CF6)
+                  : isHoliday
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF3B82F6),
               size: 26,
             ),
           ),
@@ -171,11 +187,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isHoliday ? 'Public Holiday' : 'Weekend Off',
+                  isTour
+                      ? 'On Company Tour'
+                      : isHoliday
+                          ? 'Public Holiday'
+                          : 'Weekend Off',
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
-                    color: isHoliday ? const Color(0xFF92400E) : const Color(0xFF1E40AF),
+                    color: isTour
+                        ? const Color(0xFF6D28D9)
+                        : isHoliday
+                            ? const Color(0xFF92400E)
+                            : const Color(0xFF1E40AF),
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -184,9 +208,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: isHoliday
-                        ? const Color(0xFF92400E).withValues(alpha: 0.7)
-                        : const Color(0xFF1E40AF).withValues(alpha: 0.7),
+                    color: isTour
+                        ? const Color(0xFF6D28D9).withValues(alpha: 0.7)
+                        : isHoliday
+                            ? const Color(0xFF92400E).withValues(alpha: 0.7)
+                            : const Color(0xFF1E40AF).withValues(alpha: 0.7),
                     height: 1.3,
                   ),
                 ),
@@ -196,9 +222,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
-                    color: isHoliday
-                        ? const Color(0xFF92400E).withValues(alpha: 0.5)
-                        : const Color(0xFF1E40AF).withValues(alpha: 0.5),
+                    color: isTour
+                        ? const Color(0xFF6D28D9).withValues(alpha: 0.5)
+                        : isHoliday
+                            ? const Color(0xFF92400E).withValues(alpha: 0.5)
+                            : const Color(0xFF1E40AF).withValues(alpha: 0.5),
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -325,7 +353,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 Text(
                   isInRange
                       ? '$distanceStr from $officeName'
-                      : '$distanceStr away — ${radiusMeters}m limit',
+                      : '$distanceStr from $officeName — ${radiusMeters}m limit',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
@@ -334,6 +362,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         : AppColors.error.withValues(alpha: 0.8),
                   ),
                 ),
+                if (!isInRange &&
+                    provider.companyOffices.length > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'You can punch from any of ${provider.companyOffices.length} office locations',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.error.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -470,45 +511,61 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final centreLat = userLat ?? office.latitude;
     final centreLon = userLon ?? office.longitude;
 
-    final Set<Circle> circles = {
-      Circle(
-        circleId: const CircleId('geo-fence'),
-        center: LatLng(office.latitude, office.longitude),
-        radius: office.radiusMeters,
-        strokeColor: const Color(0xFF10B981), // emerald-500 matches web app
-        strokeWidth: 2,
-        fillColor: const Color(0xFF10B981).withValues(alpha: 0.1),
-      ),
-    };
+    // Draw a geo-fence circle + marker for EVERY company office so the
+    // employee can see all valid punch locations, not just the nearest one.
+    // The nearest/matching office is highlighted in emerald; other offices
+    // use a lighter blue tint.
+    final allOffices = provider.companyOffices.isNotEmpty
+        ? provider.companyOffices
+        : [office];
 
-    final Set<Marker> markers = {
-      // Office marker (green dot — matches web app)
-      Marker(
-        markerId: const MarkerId('office'),
-        position: LatLng(office.latitude, office.longitude),
+    final Set<Circle> circles = {};
+    final Set<Marker> markers = {};
+
+    for (int i = 0; i < allOffices.length; i++) {
+      final o = allOffices[i];
+      final isNearest = o.id == office.id;
+      circles.add(Circle(
+        circleId: CircleId('geo-fence-${o.id}'),
+        center: LatLng(o.latitude, o.longitude),
+        radius: o.radiusMeters,
+        strokeColor: isNearest
+            ? const Color(0xFF10B981) // emerald-500 for nearest/matching
+            : const Color(0xFF3B82F6).withValues(alpha: 0.5), // blue for others
+        strokeWidth: isNearest ? 2 : 1,
+        fillColor: isNearest
+            ? const Color(0xFF10B981).withValues(alpha: 0.1)
+            : const Color(0xFF3B82F6).withValues(alpha: 0.05),
+      ));
+      markers.add(Marker(
+        markerId: MarkerId('office-${o.id}'),
+        position: LatLng(o.latitude, o.longitude),
         icon: BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueGreen,
+          isNearest
+              ? BitmapDescriptor.hueGreen
+              : BitmapDescriptor.hueAzure,
         ),
         infoWindow: InfoWindow(
-          title: office.name,
-          snippet:
-              'Geo-fence: ${office.radiusMeters.toInt()}m radius',
+          title: o.name,
+          snippet: 'Geo-fence: ${o.radiusMeters.toInt()}m radius',
         ),
-      ),
-      // Employee marker (red hue — matches web app #EF4444)
-      if (userLat != null && userLon != null)
-        Marker(
-          markerId: const MarkerId('employee'),
-          position: LatLng(userLat, userLon),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            BitmapDescriptor.hueRed,
-          ),
-          infoWindow: const InfoWindow(
-            title: '📍 You are here',
-            snippet: 'Your current GPS location',
-          ),
+      ));
+    }
+
+    // Employee marker (red hue — matches web app #EF4444)
+    if (userLat != null && userLon != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('employee'),
+        position: LatLng(userLat, userLon),
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+          BitmapDescriptor.hueRed,
         ),
-    };
+        infoWindow: const InfoWindow(
+          title: '📍 You are here',
+          snippet: 'Your current GPS location',
+        ),
+      ));
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -580,7 +637,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'Geo-fence: ${office.radiusMeters.toInt()}m',
+                          allOffices.length > 1
+                              ? 'Geo-fence: ${office.radiusMeters.toInt()}m • ${allOffices.length} offices'
+                              : 'Geo-fence: ${office.radiusMeters.toInt()}m',
                           style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
@@ -1156,10 +1215,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final dist = provider.currentDistance > 0
           ? '${provider.currentDistance.round()}m'
           : '';
+      final officeName = provider.selectedOffice?.name ?? 'office';
       final radius = provider.selectedOffice?.radiusMeters.round() ?? 0;
+      final multiHint = provider.companyOffices.length > 1
+          ? ' You can punch from any of ${provider.companyOffices.length} office locations.'
+          : '';
       _showSnackBar(
-        'You are out of the office area${dist.isNotEmpty ? ' ($dist away)' : ''}. '
-        'Move within ${radius}m of the office to punch in.',
+        'You are out of the office area${dist.isNotEmpty ? ' ($dist from $officeName)' : ''}. '
+        'Move within ${radius}m of an office to punch in.$multiHint',
         isError: true,
       );
       return;
@@ -1187,10 +1250,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final dist = provider.currentDistance > 0
           ? '${provider.currentDistance.round()}m'
           : '';
+      final officeName = provider.selectedOffice?.name ?? 'office';
       final radius = provider.selectedOffice?.radiusMeters.round() ?? 0;
+      final multiHint = provider.companyOffices.length > 1
+          ? ' You can punch from any of ${provider.companyOffices.length} office locations.'
+          : '';
       _showSnackBar(
-        'You are out of the office area${dist.isNotEmpty ? ' ($dist away)' : ''}. '
-        'Move within ${radius}m of the office to punch out.',
+        'You are out of the office area${dist.isNotEmpty ? ' ($dist from $officeName)' : ''}. '
+        'Move within ${radius}m of an office to punch out.$multiHint',
         isError: true,
       );
       return;
@@ -1379,6 +1446,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       month.absentDays.toString(), AppColors.error),
                   _statChip(Icons.hourglass_bottom, 'Half',
                       month.halfDays.toString(), AppColors.purple),
+                  _statChip(Icons.flight_takeoff, 'Tour',
+                      month.tourDays.toString(), const Color(0xFF8B5CF6)),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1485,6 +1554,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               AttendanceStatus.late => AppColors.warning,
               AttendanceStatus.absent => AppColors.error,
               AttendanceStatus.halfDay => AppColors.purple,
+              AttendanceStatus.tour => const Color(0xFF8B5CF6),
               _ => AppColors.textTertiary,
             };
 
@@ -1598,6 +1668,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       (label: 'Late', value: AttendanceStatus.late),
       (label: 'Absent', value: AttendanceStatus.absent),
       (label: 'Half Day', value: AttendanceStatus.halfDay),
+      (label: 'Tour', value: AttendanceStatus.tour),
     ];
 
     return SingleChildScrollView(

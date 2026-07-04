@@ -1,11 +1,11 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:open_filex/open_filex.dart';
 import '../../config/theme/app_theme.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../services/api_service.dart';
+import '../../utils/file_saver.dart'
+    if (dart.library.html) '../../utils/file_saver_web.dart';
 import '../../widgets/common/common_widgets.dart';
 
 class PayrollScreen extends StatefulWidget {
@@ -167,27 +167,26 @@ class _PayrollScreenState extends State<PayrollScreen> {
       final api = context.read<ApiService>();
       final bytes = await api.downloadBytes('/payroll/payslips/$payslipId/download');
 
-      // Save to app documents directory
-      final dir = await getApplicationDocumentsDirectory();
+      // Save & open — uses dart:io on mobile, browser download on web.
       final fileName = 'Payslip_${month.replaceAll(' ', '_')}.pdf';
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(bytes, flush: true);
-
-      // Open the downloaded PDF
-      await OpenFilex.open(file.path);
+      await saveAndOpenFile(bytes, fileName);
 
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Payslip downloaded successfully'),
+          content: Text(kIsWeb
+              ? 'Payslip downloaded to your browser'
+              : 'Payslip downloaded successfully'),
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.success,
           duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'OPEN',
-            textColor: Colors.white,
-            onPressed: () => OpenFilex.open(file.path),
-          ),
+          action: kIsWeb
+              ? null
+              : SnackBarAction(
+                  label: 'OPEN',
+                  textColor: Colors.white,
+                  onPressed: () => saveAndOpenFile(bytes, fileName),
+                ),
         ),
       );
     } catch (e) {
