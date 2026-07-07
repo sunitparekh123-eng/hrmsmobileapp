@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../config/theme/app_theme.dart';
 import '../../providers/dashboard_provider.dart';
 import '../../models/leave.dart';
-import '../../data/mock/mock_leave.dart';
+import '../../services/api_service.dart';
 import '../../widgets/common/common_widgets.dart';
 
 class LeaveScreen extends StatefulWidget {
@@ -17,25 +17,28 @@ class _LeaveScreenState extends State<LeaveScreen> {
   LeaveStatus? _selectedLeaveStatusFilter;
   bool _showAllLeaves = false;
 
-  // Form state — only fromDate needed (always 1 day, toDate = fromDate)
+  // Form state — fromDate + toDate for date range (1 or 2 days)
   DateTime? _fromDate;
+  DateTime? _toDate;
   String? _modalError;
   final TextEditingController _reasonController = TextEditingController();
   final TextEditingController _contactController = TextEditingController();
 
-  bool _hasLeaveInMonth(DateTime date, List<LeaveRequest> requests) {
-    final monthKey = '${date.year}-${date.month}';
-    return requests.any((r) =>
-        '${r.fromDate.year}-${r.fromDate.month}' == monthKey &&
-        (r.status == LeaveStatus.approved || r.status == LeaveStatus.pending));
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  int _calcDuration(DateTime from, DateTime to) {
+    return _dateOnly(to).difference(_dateOnly(from)).inDays + 1;
   }
 
-  bool _hasOverlappingLeave(DateTime date, List<LeaveRequest> requests) {
-    return requests.any((r) =>
-        (r.status == LeaveStatus.approved || r.status == LeaveStatus.pending) &&
-        r.fromDate.year == date.year &&
-        r.fromDate.month == date.month &&
-        r.fromDate.day == date.day);
+  bool _hasOverlappingLeaveRange(DateTime from, DateTime to, List<LeaveRequest> requests) {
+    final f = _dateOnly(from);
+    final t = _dateOnly(to);
+    return requests.any((r) {
+      if (r.status != LeaveStatus.approved && r.status != LeaveStatus.pending) return false;
+      final rf = _dateOnly(r.fromDate);
+      final rt = _dateOnly(r.toDate);
+      return rf.compareTo(t) <= 0 && f.compareTo(rt) <= 0;
+    });
   }
 
   @override
@@ -47,6 +50,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
 
   void _openApplyForm() {
     _fromDate = null;
+    _toDate = null;
     _modalError = null;
     _reasonController.clear();
     _contactController.clear();
@@ -92,6 +96,10 @@ class _LeaveScreenState extends State<LeaveScreen> {
     if (picked != null) {
       setModalState(() {
         _fromDate = picked;
+        // Clear to-date if it's now before the new from-date
+        if (_toDate != null && _toDate!.isBefore(picked)) {
+          _toDate = null;
+        }
         _modalError = null;
       });
       setState(() {
@@ -100,32 +108,95 @@ class _LeaveScreenState extends State<LeaveScreen> {
     }
   }
 
+  Future<void> _pickToDate(StateSetter setModalState) async {
+    if (_fromDate == null) return;
+    final now = DateTime.now();
+    final first = _fromDate!.isAfter(now) ? _fromDate! : now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDate ?? first,
+      firstDate: first,
+      lastDate: _fromDate!.add(const Duration(days: 1)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: AppColors.primary,
+              onPrimary: AppColors.textPrimary,
+              surface: AppColors.surface,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setModalState(() {
+        _toDate = picked;
+        _modalError = null;
+      });
+      setState(() {
+        _toDate = picked;
+      });
+    }
+  }
+
   Future<void> _submitLeave(DashboardProvider dashboard, StateSetter setModalState) async {
     if (_fromDate == null) {
       setModalState(() {
-        _modalError = 'Please select a date';
+        _modalError = 'Please select a from date';
       });
       return;
     }
-    if (_reasonController.text.trim().isEmpty) {
+    if (_toDate == null) {
+      setModalState(() {
+        _modalError = 'Please select a to date';
+      });
+      return;
+    }
+    final reason = _reasonController.text.trim();
+    if (reason.isEmpty) {
       setModalState(() {
         _modalError = 'Please enter a reason';
       });
       return;
     }
-
-    // Check same-day overlap
-    if (_hasOverlappingLeave(_fromDate!, dashboard.leaveRequests)) {
+    if (reason.length < 10) {
       setModalState(() {
-        _modalError = 'You already have a pending/approved leave request for this date';
+        _modalError =
+            'Reason must be at least 10 characters (currently ${reason.length})';
       });
       return;
     }
 
-    // Check max 1 leave per month
-    if (_hasLeaveInMonth(_fromDate!, dashboard.leaveRequests)) {
+    final duration = _calcDuration(_fromDate!, _toDate!);
+
+    // Duration must be 1 or 2 days
+    if (duration < 1 || duration > 2) {
       setModalState(() {
-        _modalError = 'You already have a leave in this month. Maximum 1 leave per month is allowed.';
+        _modalError = 'You can only apply for 1 or 2 days of leave at a time.';
+      });
+      return;
+    }
+
+    // Check overlapping leave requests for the date range
+    if (_hasOverlappingLeaveRange(_fromDate!, _toDate!, dashboard.leaveRequests)) {
+      setModalState(() {
+        _modalError = 'You already have a pending/approved leave request that overlaps with these dates';
+      });
+      return;
+    }
+
+    // Check max 2 leaves per month (based on from_date's month)
+    final monthKey = '${_fromDate!.year}-${_fromDate!.month}';
+    final usedInMonth = dashboard.leaveRequests
+        .where((r) =>
+            '${r.fromDate.year}-${r.fromDate.month}' == monthKey &&
+            (r.status == LeaveStatus.approved || r.status == LeaveStatus.pending))
+        .fold(0, (sum, r) => sum + r.duration);
+    if (usedInMonth + duration > 2) {
+      setModalState(() {
+        _modalError = 'You already have $usedInMonth day(s) of leave in this month. With $duration new day(s), this would exceed the maximum of 2 leaves per month.';
       });
       return;
     }
@@ -138,8 +209,10 @@ class _LeaveScreenState extends State<LeaveScreen> {
       );
 
       await dashboard.applyLeave(
-        date: _fromDate!,
-        reason: _reasonController.text.trim(),
+        fromDate: _fromDate!,
+        toDate: _toDate!,
+        duration: duration,
+        reason: reason,
         contact: _contactController.text.trim().isEmpty
             ? null
             : _contactController.text.trim(),
@@ -152,12 +225,34 @@ class _LeaveScreenState extends State<LeaveScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('EL leave applied for 1 day'),
+          content: Text('EL leave applied for $duration day(s)'),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
+    } on ApiException catch (e) {
+      // Pop loading dialog
+      Navigator.of(context).pop();
+      // Extract detailed validation messages from the backend response
+      String displayError = e.message;
+      if (e.errors is List && (e.errors as List).isNotEmpty) {
+        final parts = (e.errors as List)
+            .map((err) {
+              if (err is Map) {
+                return err['message']?.toString() ?? '';
+              }
+              return err.toString();
+            })
+            .where((s) => s.isNotEmpty)
+            .toList();
+        if (parts.isNotEmpty) {
+          displayError = parts.join('\n');
+        }
+      }
+      setModalState(() {
+        _modalError = displayError;
+      });
     } catch (e) {
       // Pop loading dialog
       Navigator.of(context).pop();
@@ -381,11 +476,11 @@ class _LeaveScreenState extends State<LeaveScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          _buildAccrualRow('1 EL earned per month'),
+          _buildAccrualRow('2 EL earned per month (onboarding grants 2 EL)'),
           const SizedBox(height: 4),
-          _buildAccrualRow('Unused leave carries forward to next month (max 2)'),
+          _buildAccrualRow('Unused leaves carry forward up to 3 months'),
           const SizedBox(height: 4),
-          _buildAccrualRow('If unused for 2 consecutive months, leaves expire & reset to 0'),
+          _buildAccrualRow('If unused for 3 consecutive months, accrued leaves expire & reset'),
         ],
       ),
     );
@@ -564,7 +659,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
                             ),
                       ),
                       Text(
-                        '1 EL per month • Max 1 day',
+                        '2 EL per month • Max 2 days',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               fontSize: 11,
                               color: AppColors.textTertiary,
@@ -640,7 +735,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
                         ),
                         const Spacer(),
                         Text(
-                          'Max 1/month',
+                          'Max 2/month',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 fontSize: 10,
                                 color: AppColors.textTertiary,
@@ -653,16 +748,31 @@ class _LeaveScreenState extends State<LeaveScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Date picker (single date since max 1 day)
-                  _formLabel('Select Date'),
+                  // From Date picker
+                  _formLabel('From Date'),
                   const SizedBox(height: 8),
                   _dateTile(
-                    label: 'Leave Date',
+                    label: 'Select start date',
                     value: _fromDate,
                     onTap: () => _pickDate(setModalState),
                   ),
 
-                  if (_fromDate != null) ...[
+                  const SizedBox(height: 16),
+
+                  // To Date picker (max 2 days from from-date)
+                  _formLabel('To Date'),
+                  const SizedBox(height: 8),
+                  _dateTile(
+                    label: _fromDate == null
+                        ? 'Select from date first'
+                        : 'Select end date (max 2 days)',
+                    value: _toDate,
+                    onTap: _fromDate == null
+                        ? null
+                        : () => _pickToDate(setModalState),
+                  ),
+
+                  if (_fromDate != null && _toDate != null) ...[
                     const SizedBox(height: 10),
                     Container(
                       width: double.infinity,
@@ -676,12 +786,14 @@ class _LeaveScreenState extends State<LeaveScreen> {
                           const Icon(Icons.info_outline_rounded,
                               size: 16, color: AppColors.info),
                           const SizedBox(width: 8),
-                          Text(
-                            '1 day EL leave on ${_formatShortDate(_fromDate!)}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.info,
+                          Expanded(
+                            child: Text(
+                              '${_calcDuration(_fromDate!, _toDate!)} day(s) EL leave from ${_formatShortDate(_fromDate!)} to ${_formatShortDate(_toDate!)}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.info,
+                              ),
                             ),
                           ),
                         ],

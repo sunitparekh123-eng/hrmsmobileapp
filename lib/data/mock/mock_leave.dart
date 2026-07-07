@@ -7,10 +7,10 @@ class MockLeaveData {
 
   static List<LeaveBalance> getBalances() => [
         const LeaveBalance(
-          available: 2,
-          used: 4,
+          available: 4,
+          used: 2,
           adminGranted: 1,
-          lapsed: 5,
+          lapsed: 2,
           lastAccrualMonth: '2026-06',
           consecutiveNoUsageMonths: 0,
         ),

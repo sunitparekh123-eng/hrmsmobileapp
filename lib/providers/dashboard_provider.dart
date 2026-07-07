@@ -143,16 +143,19 @@ class DashboardProvider extends ChangeNotifier {
   }
 
   Future<void> applyLeave({
-    required DateTime date,
+    required DateTime fromDate,
+    required DateTime toDate,
+    required int duration,
     required String reason,
     String? contact,
   }) async {
-    final dateStr = date.toIso8601String().split('T')[0];
+    final fromStr = fromDate.toIso8601String().split('T')[0];
+    final toStr = toDate.toIso8601String().split('T')[0];
     final body = {
       'leave_type': 'el',
-      'from_date': dateStr,
-      'to_date': dateStr,
-      'duration': 1,
+      'from_date': fromStr,
+      'to_date': toStr,
+      'duration': duration,
       'reason': reason,
       if (contact != null && contact.isNotEmpty) 'contact_during_leave': contact,
     };

@@ -10,8 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// - Unwraps the { success, message, data } envelope from backend
 class ApiService {
   /// Backend API URL.
-  /// Local backend running on the host machine (same WiFi network).
-  /// Use the host machine's LAN IP so a physical phone can reach it.
+  /// Local backend running on the host machine.
+  /// Uses the host's LAN IP so a physical phone on the same WiFi can reach it.
+  /// For the Android emulator instead, use 'http://10.0.2.2:5000/api/v1'.
   static String get baseUrl => 'https://api.apaarpulse.com/api/v1';
 
   String? _token;

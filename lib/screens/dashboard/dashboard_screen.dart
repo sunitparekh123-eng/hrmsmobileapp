@@ -260,13 +260,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildLeaveSection(DashboardProvider dashboard) {
     final balances = dashboard.leaveBalances;
-    // Leave policy: 1 earned leave per month, carry-forward max 1 month
-    // (so max 2 leaves available), lapse if unused for 2 consecutive months
+    // Leave policy: 2 earned leaves per month, carry-forward max 3 months
+    // (so up to 8 leaves available), lapse if unused for 3 consecutive months
     final balance = balances.isNotEmpty ? balances.first : null;
     final available = balance?.available ?? 0;
     final used = balance?.used ?? 0;
     final lapsed = balance?.lapsed ?? 0;
-    final maxAllowed = 2; // policy: max 2 available at any time
+    final maxAllowed = 8; // policy: max 8 available at any time (2 × 4 months)
     final usageFrac = maxAllowed > 0 ? (used / maxAllowed).clamp(0.0, 1.0) : 0.0;
 
     return Column(
@@ -274,7 +274,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         SectionHeader(
           title: 'Leave Balance',
-          subtitle: '1 Earned Leave / month · Max 2 carry-forward',
+          subtitle: '2 Earned Leaves / month · Max 3 months carry-forward',
           onAction: () => widget.onNavigate?.call(2),
         ),
         const SizedBox(height: 8),
