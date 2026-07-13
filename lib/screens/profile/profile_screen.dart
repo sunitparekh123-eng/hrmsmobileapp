@@ -109,19 +109,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
           ],
 
-          // -- Salary Structure --
-          if (employee.fixedGross > 0) ...[
-            _buildSection(context, 'Salary Structure', [
-              _buildSalaryRow(context, 'Fixed Gross', '₹${_formatCurrency(employee.fixedGross)}'),
-              _buildSalaryRow(context, 'Basic Salary (40%)', '₹${_formatCurrency(employee.basicSalary)}'),
-              const Divider(height: 16),
-              _buildSalaryRow(context, 'PF Applicable', employee.pfApplicable ? 'Yes' : 'No'),
-              if (employee.pfApplicable)
-                _buildSalaryRow(context, 'PF Ceiling', '₹${_formatCurrency(employee.pfCeiling)}'),
-              _buildSalaryRow(context, 'ESIC Applicable', employee.esicApplicable ? 'Yes' : 'No'),
-            ]),
-            const SizedBox(height: 16),
-          ],
 
           // -- SOW 3.1 & 3.7: Quick-access tiles for Documents & Letters --
           _buildQuickAccessCard(context, docs, letters),
